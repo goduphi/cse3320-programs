@@ -31,6 +31,7 @@
 // includes pid_t
 #include <sys/types.h>
 #include <stdlib.h>
+#include <sys/wait.h>
 
 int main(void)
 {
