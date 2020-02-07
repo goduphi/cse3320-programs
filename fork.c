@@ -6,7 +6,7 @@
 #include <stdio.h>
 // includes fork()
 #include <unistd.h>
-// include pid_t
+// includes pid_t
 #include <sys/types.h>
 #include <stdlib.h>
 
