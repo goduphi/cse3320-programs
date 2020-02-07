@@ -1,5 +1,12 @@
+/*
+	CSE3320 - Operating Systems
+	Author: Trevor Jay Bakker, University of Texas at Arlington
+*/
+
 #include <stdio.h>
+// includes fork()
 #include <unistd.h>
+// include pid_t
 #include <sys/types.h>
 #include <stdlib.h>
 
