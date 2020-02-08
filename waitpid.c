@@ -40,7 +40,7 @@
 		because it received a signal that was not handled.
 
 		* int WTERMSIG(int status) -  If WIFSIGNALED is true of status, this macro returns the signal number
-		ofthe signal that terminated the child process.
+		of the signal that terminated the child process.
 */
 
 int main(void)
