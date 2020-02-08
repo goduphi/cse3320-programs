@@ -1,6 +1,6 @@
 /*
 	This program fork()'s a child and then uses execl to execute ls
-	Added ability to take in input and execute the ls command by taking in user input
+	Added the ability to take in user input and execute the ls command
 */
 
 #include <stdio.h>
@@ -44,6 +44,6 @@ int main(int argc, char *argv[])
 
 	// wait until the child terminates
 	waitpid(child_pid, &status, 0);
-
+	
 	return EXIT_SUCCESS;
 }
