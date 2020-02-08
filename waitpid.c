@@ -33,12 +33,14 @@
   	so we can use the WIFSIGNALED and WTERMSIG to learn how our child died
 
 	Things that I never knew about:
+		
+		Definitions from: https://www.gnu.org/software/libc/manual/html_node/Process-Completion-Status.html
 
-		* int WIFSIGNALED(int status) - It determines if the child process
-		exited because it raised a signal that caused it to exit.
+		* int WIFSIGNALED(int status) - This macro returns a nonzero value if the child process terminated
+		because it received a signal that was not handled.
 
-		* WTERMSIG macro can be used to determine which signal was
-		raised by the child process
+		* int WTERMSIG(int status) -  If WIFSIGNALED is true of status, this macro returns the signal number
+		ofthe signal that terminated the child process.
 */
 
 int main(void)
@@ -69,7 +71,7 @@ int main(void)
 	if(WIFSIGNALED(status))
 	{
 		// print the signal the child was terminated with
-		printf("Child returned with status %d\n", WTERMSIG(status));
+		printf("Child returned with status %d.\n", WTERMSIG(status));
 	}
 	return EXIT_SUCCESS;
 }
