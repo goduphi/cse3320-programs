@@ -22,7 +22,7 @@
 #define MAX_COMMAND_LENGTH 1024
 
 // The maximum number of arguments that the command line supports
-#define MAX_NUM_OF_ARGUMENTS 10
+#define MAX_NUM_OF_ARGUMENTS 12
 
 #define MAX_NUM_COMMANDS 14
 
@@ -148,7 +148,7 @@ char * execute_specified_command(int command_number, Queue *head)
 		temp = temp->next_ptr;
 		counter++;
 	}
-	
+
 	return NULL;
 }
 
@@ -183,6 +183,15 @@ void remove_slashn(char cmd[])
 {
 	if((cmd[strlen(cmd) - 1]) == '\n')
 		cmd[strlen(cmd) - 1] = '\0';
+}
+
+void free_token_arr(char *token[])
+{
+	int token_idx = 0;
+	for(token_idx = 0; token[token_idx] != NULL && token_idx < MAX_NUM_OF_ARGUMENTS; token_idx++)
+	{
+		free(token[token_idx]);
+	}
 }
 
 int main(void)
@@ -223,12 +232,23 @@ int main(void)
 		str_to_lower(cmd_str, exit_quit);
 		
 		if(strcmp(exit_quit, "quit") == 0 || strcmp(exit_quit, "exit") == 0)
-			break;
+		{
+			exit(0);
+		}
 		
 		if(cmd_str[0] == '!')
 		{
 			// call function to find node with command and set cmd_str to that command for processing
-			strcpy(cmd_str, execute_specified_command(parse_command_number(cmd_str), history_qhead));
+			char * cmd_to_execute = execute_specified_command(parse_command_number(cmd_str), history_qhead);
+			if(cmd_to_execute == NULL)
+			{
+				printf("Command not in history.\n");
+				continue;
+			}
+			else
+			{
+				strcpy(cmd_str, cmd_to_execute);
+			}
 		}
 		
 		if(strcmp(cmd_str, "\n") == 0)
@@ -277,15 +297,20 @@ int main(void)
 			// if we hit a "\n", after which is an empty string, we replace it with NULL
 			// this comes in handy when we put all of the arguments inside of execl
 			if(strlen(token[token_count]) == 0)
+			{
+				free(token[token_count]);
 				token[token_count] = NULL;
+			}
 			
 			token_count++;
 		}
 		
+		free(working_str);
+		free(working_root);
+		
 		if(strcmp(token[0], CHANGE_DIRECTORY) == 0)
 		{
 			change_directory(token);
-			continue;
 		}
 		else if(strcmp(token[0], "history") == 0)
 		{
@@ -293,7 +318,6 @@ int main(void)
 				list_commands(history_qhead);
 			else
 				printf("No commands have been executed yet.\n");
-			continue;
 		}
 		else if(strcmp(token[0], "showpids") == 0)
 		{
@@ -301,7 +325,6 @@ int main(void)
 				list_commands(pid_qhead);
 			else
 				printf("No processes have been spawned yet.\n");
-			continue;
 		}
 		else if(token_count > 0)
 		{
@@ -332,7 +355,8 @@ int main(void)
 															 token[2], token[3],
 															 token[4], token[5],
 															 token[6], token[7],
-															 token[8], token[9], NULL);
+															 token[8], token[9],
+															 token[10], NULL);
 				}
 				
 				if(execl_status == -1)
@@ -359,7 +383,7 @@ int main(void)
 			waitpid(child_pid, &child_status, 0);
 		}
 		
-		free(working_root);
+		free_token_arr(token);
 		
 	}
 	// Do a bit of house keeping by freeing all malloced data
