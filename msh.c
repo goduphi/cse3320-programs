@@ -41,11 +41,22 @@
 #define CURRENT_DIR "./"
 #define PARENT_DIR get_current_dir_name()
 
+/*
+	This struct defines the queue
+*/
+
 typedef struct Queue
 {
 	char command[MAX_COMMAND_LENGTH];
 	struct Queue *next_ptr;
 } Queue;
+
+/*
+	This function frees the entire queue.
+	Param 1: Pass in queue head.
+	Param 2: Pass in queue tail.
+	Param 3: Pass in the command to be stored.
+*/
 
 bool enQueue(Queue **head, Queue **tail, char cmd[])
 {
@@ -66,6 +77,11 @@ bool enQueue(Queue **head, Queue **tail, char cmd[])
 	return true;
 }
 
+/*
+	This function checks to see whether the queue is empty or not!
+	Param: Pass in queue head.
+*/
+
 bool empty(Queue *head)
 {
 	if(head == NULL)
@@ -73,6 +89,11 @@ bool empty(Queue *head)
 	else
 		return false;
 }
+
+/*
+	This function frees the first node
+	Param: Pass in queue head.
+*/
 
 void deQueue(Queue **head)
 {
@@ -89,11 +110,21 @@ void deQueue(Queue **head)
 	}
 }
 
+/*
+	This function frees the entire queue.
+	Param: Pass in queue head.
+*/
+
 void free_queue(Queue **head)
 {
 	while(*head != NULL)
 		deQueue(head);
 }
+
+/*
+	This function prints all of the contents inside of the queue.
+	Param: Pass in queue head.
+*/
 
 void list_commands(Queue *head)
 {
@@ -106,6 +137,11 @@ void list_commands(Queue *head)
 		counter++;
 	}
 }
+
+/*
+	This function allows the directory to change.
+	Param: Pass in a string that contains the path to the desired directory.
+*/
 
 void change_directory(char **cmd)
 {
@@ -127,6 +163,12 @@ void change_directory(char **cmd)
 	
 	chdir(temp_path);
 }
+
+/*
+	This function executes the commands based on its index inside of the queue.
+	Param 1: Command index.
+	Param 2: History queue.
+*/
 
 char * execute_specified_command(int command_number, Queue *head)
 {
@@ -151,6 +193,12 @@ char * execute_specified_command(int command_number, Queue *head)
 
 	return NULL;
 }
+
+/*
+	This function takes a string and converts it into lower case.
+	Param 1: Char array to be converted.
+	Praam 2: Char array where the converted string is to be stored.
+*/
 
 void str_to_lower(char input_string[],  char output_string[])
 {
@@ -179,11 +227,20 @@ int parse_command_number(char *cmd_str)
 	return command_number;
 }
 
+/*
+	This function removes the \n from the passed in string.
+*/
+
 void remove_slashn(char cmd[])
 {
 	if((cmd[strlen(cmd) - 1]) == '\n')
 		cmd[strlen(cmd) - 1] = '\0';
 }
+
+/*
+	This function frees all of the allocated memory for the command line arguments.
+	Param: Pass in array of pointers to char of command line arguments.
+*/
 
 void free_token_arr(char *token[])
 {
@@ -386,6 +443,7 @@ int main(void)
 		free_token_arr(token);
 		
 	}
+	
 	// Do a bit of house keeping by freeing all malloced data
 	free(cmd_str);
 	free_queue(&history_qhead);
