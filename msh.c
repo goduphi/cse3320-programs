@@ -251,6 +251,12 @@ void free_token_arr(char *token[])
 	}
 }
 
+/*
+	This function checks for the pipe symbol, '|', inside of the command string
+	Param 1: Pointer to char array of arguments
+	Param 2: Address of an int which stores the index in which the pipe symbol is at
+*/
+
 char * check_for_pipe(char *token[], int *pipe_idx)
 {
 	int token_idx = 0;
