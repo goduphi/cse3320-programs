@@ -251,6 +251,21 @@ void free_token_arr(char *token[])
 	}
 }
 
+char * check_for_pipe(char *token[], int *pipe_idx)
+{
+	int token_idx = 0;
+	for(token_idx = 0; token[token_idx] != NULL && token_idx < MAX_NUM_OF_ARGUMENTS; token_idx++)
+	{
+		if(strcmp(token[token_idx], "|") == 0)
+		{
+			*pipe_idx = token_idx;
+			return token[token_idx];
+		}
+	}
+	
+	return NULL;
+}
+
 int main(void)
 {
 	// This string will hold the entire string written down into the command line
@@ -295,8 +310,10 @@ int main(void)
 		
 		if(cmd_str[0] == '!')
 		{
-			// call function to find node with command and set cmd_str to that command for processing
-			char * cmd_to_execute = execute_specified_command(parse_command_number(cmd_str), history_qhead);
+			// call function to find node with command and set cmd_str to that
+			// command for processing
+			char * cmd_to_execute = execute_specified_command(parse_command_number(cmd_str),
+															  history_qhead);
 			if(cmd_to_execute == NULL)
 			{
 				printf("Command not in history.\n");
@@ -389,6 +406,11 @@ int main(void)
 				fork() allows for the creation of a child process from the parent process
 				where fork() was called.
 			*/
+			
+			int fd[2];
+			char *pipe_addr_ptr = NULL;
+			int pipe_idx = 0;
+			
 			pid_t child_pid = fork();
 			
 			if(child_pid == -1)
@@ -397,6 +419,37 @@ int main(void)
 			}
 			else if(child_pid == 0)
 			{
+				
+				if((pipe_addr_ptr = check_for_pipe(token, &pipe_idx)) != NULL)
+				{
+					
+					pipe(fd);
+					
+					if(!fork())
+					{
+						token[pipe_idx] = NULL;
+						close(STDOUT_FILENO);         /* close normal stdout */
+						dup(fd[1]);                 /* make stdout same as pfds[1] */
+						close(fd[0]);               /* we don't need this */
+					}
+					else
+					{
+						close(STDIN_FILENO);        /* close normal stdin */
+						dup(fd[0]);                 /* make stdin same as pfds[0] */
+						close(fd[1]);               /* we don't need this */
+						
+						//------------------------------------------
+						int execvp_status = 0;
+						
+						execvp_status = execvp(token[pipe_idx + 1], token + pipe_idx + 1);
+						
+						if(execvp_status == -1)
+						{
+							printf("%s: Command not found\n", token[pipe_idx + 1]);
+						}
+					}
+				}
+				
 				int execl_status = 0;
 				int path_idx = 0;
 				for(path_idx = 0; path_idx < MAX_NUM_OF_ARGUMENTS; path_idx++)
@@ -420,6 +473,7 @@ int main(void)
 				{
 					printf("%s: Command not found\n", cmd_str);
 				}
+				token[pipe_idx] = pipe_addr_ptr;
 			}
 			// enQueue pid info inside of the parent because child has no idea about
 			// pid returned to parent
