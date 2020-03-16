@@ -189,11 +189,11 @@ void *professorthread(void *junk)
 		pthread_mutex_lock(&ClassNoStudent);
 		//printf("S = %d, A = %d, B = %d, TA = %d, TB = %d\n", students_in_office, classa_inoffice, classb_inoffice, total_classa, total_classb);
 		
-		if(classa_inoffice == 0 && classb_inoffice > 0 || (total_classa == 5 && total_classa != 0))
+		if(classa_inoffice == 0 && classb_inoffice > 0)
 		{
 			pthread_cond_broadcast(&ClassAMtx);
 		}
-		else if(classb_inoffice == 0 && classa_inoffice > 0 || (total_classb == 5 && total_classb != 0))
+		else if(classb_inoffice == 0 && classa_inoffice > 0)
 		{
 			pthread_cond_broadcast(&ClassBMtx);
 		}
@@ -225,7 +225,7 @@ void classa_enter()
 	
 	pthread_mutex_lock(&ClassNoStudent);
 
-	while(classb_inoffice > 0 && classa_inoffice == 0 || (total_classa == 5 && total_classa != 0))
+	while(classb_inoffice > 0 && classa_inoffice == 0)
 	{
 		pthread_cond_wait(&ClassBMtx, &ClassNoStudent);
 	}
@@ -258,7 +258,7 @@ void classb_enter()
 	sem_wait(&Break);
 	sem_wait(&ClassSeat);
 	
-	while(classa_inoffice > 0 && classb_inoffice == 0 || (total_classb == 5 && total_classb != 0))
+	while(classa_inoffice > 0 && classb_inoffice == 0)
 	{
 		pthread_cond_wait(&ClassAMtx, &ClassNoStudent);
 	}
@@ -344,7 +344,7 @@ void * classa_student(void *si)
 	assert(classa_inoffice >= 0 && classa_inoffice <= MAX_SEATS);
 	assert(classb_inoffice >= 0 && classb_inoffice <= MAX_SEATS);
 	assert(classb_inoffice == 0);
-	assert(total_classa <= 5 && total_classb <= 5);
+	//assert(total_classa <= 5 && total_classb <= 5);
 
 	/* ask questions  --- do not make changes to the 3 lines below*/
 	printf("Student %d from class A starts asking questions for %d minutes\n", s_info->student_id, s_info->question_time);
@@ -359,7 +359,7 @@ void * classa_student(void *si)
 	assert(students_in_office <= MAX_SEATS && students_in_office >= 0);
 	assert(classb_inoffice >= 0 && classb_inoffice <= MAX_SEATS); 
 	assert(classa_inoffice >= 0 && classa_inoffice <= MAX_SEATS);
-	assert(total_classa <= 5 && total_classb <= 5);
+	//assert(total_classa <= 5 && total_classb <= 5);
 	
 	pthread_exit(NULL);
 }
@@ -381,7 +381,7 @@ void * classb_student(void *si)
 	assert(classb_inoffice >= 0 && classb_inoffice <= MAX_SEATS);
 	assert(classa_inoffice >= 0 && classa_inoffice <= MAX_SEATS);
 	assert(classa_inoffice == 0 );
-	assert(total_classa <= 5 && total_classb <= 5);
+	//assert(total_classa <= 5 && total_classb <= 5);
 
 	printf("Student %d from class B starts asking questions for %d minutes\n", s_info->student_id, s_info->question_time);
 	ask_questions(s_info->question_time);
@@ -395,7 +395,7 @@ void * classb_student(void *si)
 	assert(students_in_office <= MAX_SEATS && students_in_office >= 0);
 	assert(classb_inoffice >= 0 && classb_inoffice <= MAX_SEATS);
 	assert(classa_inoffice >= 0 && classa_inoffice <= MAX_SEATS);
-	assert(total_classa <= 5 && total_classb <= 5);
+	//assert(total_classa <= 5 && total_classb <= 5);
 
 	pthread_exit(NULL);
 }
