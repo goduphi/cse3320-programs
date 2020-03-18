@@ -54,6 +54,7 @@
 
 pthread_mutex_t ClassNoStudent = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t BreakMtx = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t StallMtx = PTHREAD_MUTEX_INITIALIZER;
 
 // Controls the entrance of students into the class
 pthread_cond_t ClassAMtx = PTHREAD_COND_INITIALIZER;
@@ -63,6 +64,8 @@ pthread_cond_t BreakCond = PTHREAD_COND_INITIALIZER;
 sem_t ClassSeat;
 sem_t OnlyOneClass;
 sem_t Break;
+sem_t StallA;
+sem_t StallB;
 
 /* Basic information about simulation.  They are printed/checked at the end 
  * and in assert statements during execution.
@@ -77,6 +80,9 @@ static int classb_inoffice;      /* Total numbers of students from class B in th
 static int students_since_break = 0;
 static int total_classa;
 static int total_classb;
+
+static int StopA;
+static int StopB;
 
 typedef struct 
 {
@@ -98,6 +104,9 @@ static int initialize(student_info *si, char *filename)
 	students_since_break = 0;
 	total_classa = 0;
 	total_classb = 0;
+	
+	StopA = 1;
+	StopB = 1;
 
 	/* Initialize your synchronization variables (and 
 	* other variables you might use) here
@@ -115,6 +124,8 @@ static int initialize(student_info *si, char *filename)
 	 */
 	int semRetVal = sem_init(&ClassSeat, 0, MAX_SEATS);
 	int semRetValBreak = sem_init(&Break, 0, professor_LIMIT);
+	int semRetValStallA = sem_init(&StallA, 0, MAX_STUDENTS_CHANGE);
+	int semRetValStallB = sem_init(&StallB, 0, MAX_STUDENTS_CHANGE);
 	
 	if(semRetVal || semRetValBreak)
 		perror("sem_init failed");
@@ -220,6 +231,7 @@ void classa_enter()
 	/*  YOUR CODE HERE.          
 	*/
 	
+	sem_wait(&StallA);
 	sem_wait(&Break);
 	sem_wait(&ClassSeat);
 	
@@ -255,9 +267,12 @@ void classb_enter()
 	/* synchronization for the simulations variables below                  */
 	/*  YOUR CODE HERE.                                                     */
 
+	sem_wait(&StallB);
 	sem_wait(&Break);
 	sem_wait(&ClassSeat);
 	
+	pthread_mutex_lock(&ClassNoStudent);
+
 	while(classa_inoffice > 0 && classb_inoffice == 0)
 	{
 		pthread_cond_wait(&ClassAMtx, &ClassNoStudent);
@@ -285,7 +300,6 @@ static void ask_questions(int t)
 	sleep(t);
 }
 
-
 /* Code executed by a class A student when leaving the office.
  * You need to implement this.  Do not delete the assert() statements,
  * but feel free to add as many of your own as you like.
@@ -301,6 +315,18 @@ static void classa_leave()
 	
 	students_in_office -= 1;
 	classa_inoffice -= 1;
+	
+	if(total_classb > 0)
+	{
+		int val;
+		sem_getvalue(&StallB, &val);
+		int counter = 0;
+		while(counter < MAX_STUDENTS_CHANGE - val)
+		{
+			sem_post(&StallB);
+			counter++;
+		}
+	}
 	
 	pthread_mutex_unlock(&ClassNoStudent);
 	
@@ -321,6 +347,18 @@ static void classb_leave()
 	
 	students_in_office -= 1;
 	classb_inoffice -= 1;
+	
+	if(total_classa > 0)
+	{
+		int val;
+		sem_getvalue(&StallA, &val);
+		int counter = 0;
+		while(counter < MAX_STUDENTS_CHANGE - val)
+		{
+			sem_post(&StallA);
+			counter++;
+		}
+	}
 	
 	pthread_mutex_unlock(&ClassNoStudent);
 	
@@ -344,7 +382,6 @@ void * classa_student(void *si)
 	assert(classa_inoffice >= 0 && classa_inoffice <= MAX_SEATS);
 	assert(classb_inoffice >= 0 && classb_inoffice <= MAX_SEATS);
 	assert(classb_inoffice == 0);
-	//assert(total_classa <= 5 && total_classb <= 5);
 
 	/* ask questions  --- do not make changes to the 3 lines below*/
 	printf("Student %d from class A starts asking questions for %d minutes\n", s_info->student_id, s_info->question_time);
@@ -359,7 +396,6 @@ void * classa_student(void *si)
 	assert(students_in_office <= MAX_SEATS && students_in_office >= 0);
 	assert(classb_inoffice >= 0 && classb_inoffice <= MAX_SEATS); 
 	assert(classa_inoffice >= 0 && classa_inoffice <= MAX_SEATS);
-	//assert(total_classa <= 5 && total_classb <= 5);
 	
 	pthread_exit(NULL);
 }
@@ -381,7 +417,6 @@ void * classb_student(void *si)
 	assert(classb_inoffice >= 0 && classb_inoffice <= MAX_SEATS);
 	assert(classa_inoffice >= 0 && classa_inoffice <= MAX_SEATS);
 	assert(classa_inoffice == 0 );
-	//assert(total_classa <= 5 && total_classb <= 5);
 
 	printf("Student %d from class B starts asking questions for %d minutes\n", s_info->student_id, s_info->question_time);
 	ask_questions(s_info->question_time);
@@ -395,7 +430,6 @@ void * classb_student(void *si)
 	assert(students_in_office <= MAX_SEATS && students_in_office >= 0);
 	assert(classb_inoffice >= 0 && classb_inoffice <= MAX_SEATS);
 	assert(classa_inoffice >= 0 && classa_inoffice <= MAX_SEATS);
-	//assert(total_classa <= 5 && total_classb <= 5);
 
 	pthread_exit(NULL);
 }
