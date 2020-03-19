@@ -81,8 +81,12 @@ static int students_since_break = 0;
 static int total_classa;
 static int total_classb;
 
-static int StopA;
-static int StopB;
+static int FlagA;
+static int FlagB;
+
+// Let class A = 1
+// Let class B = 2
+static int LastEntered;
 
 typedef struct 
 {
@@ -105,8 +109,9 @@ static int initialize(student_info *si, char *filename)
 	total_classa = 0;
 	total_classb = 0;
 	
-	StopA = 1;
-	StopB = 1;
+	FlagA = 0;
+	FlagB = 0;
+	LastEntered = 0;
 
 	/* Initialize your synchronization variables (and 
 	* other variables you might use) here
@@ -182,6 +187,12 @@ void *professorthread(void *junk)
 		/* all of this.
 		*/
 		
+		/*
+			This section of code is responsible for controlling the professor break time
+			Take a break, and then increment the semaphore to the max number students until
+			the professor has to take a break again
+		*/
+		
 		pthread_mutex_lock(&BreakMtx);
 		
 		if(students_since_break == professor_LIMIT && students_in_office == 0)
@@ -193,21 +204,30 @@ void *professorthread(void *junk)
 				sem_post(&Break);
 				counter++;
 			}
+			
 		}
 		
 		pthread_mutex_unlock(&BreakMtx);
 		
+		/*
+			This section of code is reponsible for signaling which class should be allowed in
+		*/
+		
 		pthread_mutex_lock(&ClassNoStudent);
 		//printf("S = %d, A = %d, B = %d, TA = %d, TB = %d\n", students_in_office, classa_inoffice, classb_inoffice, total_classa, total_classb);
 		
+		// If Class A == 0, let Class B in
 		if(classa_inoffice == 0 && classb_inoffice > 0)
 		{
 			pthread_cond_broadcast(&ClassAMtx);
 		}
+		// If Class B == 0, let Class A in
 		else if(classb_inoffice == 0 && classa_inoffice > 0)
 		{
 			pthread_cond_broadcast(&ClassBMtx);
 		}
+		// If there are no students in the class, let the thread who goes in first
+		// be the thread to determine the sequence in which to let the other classes enter
 		else if(classa_inoffice == 0 && classb_inoffice == 0)
 		{
 			pthread_cond_broadcast(&ClassAMtx);
@@ -234,6 +254,12 @@ void classa_enter()
 	sem_wait(&StallA);
 	sem_wait(&Break);
 	sem_wait(&ClassSeat);
+	
+	/*
+		This section of code is reponsible for allowing only one class to enter
+		While the number of students in Class A is zero and there are students in
+		Class B, make Class A wait.
+	*/
 	
 	pthread_mutex_lock(&ClassNoStudent);
 
@@ -270,6 +296,12 @@ void classb_enter()
 	sem_wait(&StallB);
 	sem_wait(&Break);
 	sem_wait(&ClassSeat);
+	
+	/*
+		This section of code is reponsible for allowing only one class to enter
+		While the number of students in Class B is zero and there are students in
+		Class A, make Class B wait.
+	*/
 	
 	pthread_mutex_lock(&ClassNoStudent);
 
@@ -316,18 +348,40 @@ static void classa_leave()
 	students_in_office -= 1;
 	classa_inoffice -= 1;
 	
+	/*
+		This section of code deals with the professor being fair where, if 5 students
+		from one class enters, the current class (A) is blocked and the other class (B)
+		is let in.
+	*/
+	
+	int SemBVal;
+	sem_getvalue(&StallB, &SemBVal);
+	
+	// This if statment is dependent on the other class, Class B being present
+	// If there are at least 1 student from Class B, when Class A completely leaves
+	// there is room for Class B, so let Class B enter
 	if(total_classb > 0)
 	{
-		int val;
-		sem_getvalue(&StallB, &val);
 		int counter = 0;
-		while(counter < MAX_STUDENTS_CHANGE - val)
+		// Set the value of the semaphore to the max value, 5, again
+		while(counter < MAX_STUDENTS_CHANGE && counter < total_classb)
 		{
 			sem_post(&StallB);
 			counter++;
 		}
+		total_classb = 0;
 	}
-	
+	// If the value of semaphore B is 5, then no students of Class B exists
+	// So, reset Class A semaphore
+	else if(SemBVal == MAX_STUDENTS_CHANGE)
+	{
+		int counter = 0;
+		while(counter < MAX_STUDENTS_CHANGE && counter < total_classa)
+		{
+			sem_post(&StallA);
+			counter++;
+		}
+	}
 	pthread_mutex_unlock(&ClassNoStudent);
 	
 	sem_post(&ClassSeat);
@@ -348,14 +402,37 @@ static void classb_leave()
 	students_in_office -= 1;
 	classb_inoffice -= 1;
 	
+	/*
+		This section of code deals with the professor being fair where, if 5 students
+		from one class enters, the current class (B) is blocked and the other class (A)
+		is let in.
+	*/
+	
+	int SemAVal;
+	sem_getvalue(&StallA, &SemAVal);
+	
+	// This if statment is dependent on the other class, Class A being present
+	// If there are at least 1 student from Class A, when Class B completely leaves
+	// there is room for Class A, so let Class A enter
 	if(total_classa > 0)
 	{
-		int val;
-		sem_getvalue(&StallA, &val);
 		int counter = 0;
-		while(counter < MAX_STUDENTS_CHANGE - val)
+		// Set the value of the semaphore to the max value, 5, again
+		while(counter < MAX_STUDENTS_CHANGE && counter < total_classa)
 		{
 			sem_post(&StallA);
+			counter++;
+		}
+		total_classa = 0;
+	}
+	// If the value of semaphore A is 5, then no students of Class A exists
+	// So, reset Class B semaphore
+	else if(SemAVal == MAX_STUDENTS_CHANGE)
+	{
+		int counter = 0;
+		while(counter < MAX_STUDENTS_CHANGE && counter < total_classb)
+		{
+			sem_post(&StallB);
 			counter++;
 		}
 	}
@@ -382,6 +459,7 @@ void * classa_student(void *si)
 	assert(classa_inoffice >= 0 && classa_inoffice <= MAX_SEATS);
 	assert(classb_inoffice >= 0 && classb_inoffice <= MAX_SEATS);
 	assert(classb_inoffice == 0);
+	assert(total_classa <= MAX_STUDENTS_CHANGE || total_classb <= MAX_STUDENTS_CHANGE);
 
 	/* ask questions  --- do not make changes to the 3 lines below*/
 	printf("Student %d from class A starts asking questions for %d minutes\n", s_info->student_id, s_info->question_time);
@@ -396,6 +474,7 @@ void * classa_student(void *si)
 	assert(students_in_office <= MAX_SEATS && students_in_office >= 0);
 	assert(classb_inoffice >= 0 && classb_inoffice <= MAX_SEATS); 
 	assert(classa_inoffice >= 0 && classa_inoffice <= MAX_SEATS);
+	assert(total_classa <= MAX_STUDENTS_CHANGE || total_classb <= MAX_STUDENTS_CHANGE);
 	
 	pthread_exit(NULL);
 }
@@ -417,6 +496,7 @@ void * classb_student(void *si)
 	assert(classb_inoffice >= 0 && classb_inoffice <= MAX_SEATS);
 	assert(classa_inoffice >= 0 && classa_inoffice <= MAX_SEATS);
 	assert(classa_inoffice == 0 );
+	assert(total_classa <= MAX_STUDENTS_CHANGE || total_classb <= MAX_STUDENTS_CHANGE);
 
 	printf("Student %d from class B starts asking questions for %d minutes\n", s_info->student_id, s_info->question_time);
 	ask_questions(s_info->question_time);
@@ -430,6 +510,7 @@ void * classb_student(void *si)
 	assert(students_in_office <= MAX_SEATS && students_in_office >= 0);
 	assert(classb_inoffice >= 0 && classb_inoffice <= MAX_SEATS);
 	assert(classa_inoffice >= 0 && classa_inoffice <= MAX_SEATS);
+	assert(total_classa <= MAX_STUDENTS_CHANGE || total_classb <= MAX_STUDENTS_CHANGE);
 
 	pthread_exit(NULL);
 }
