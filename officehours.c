@@ -257,6 +257,8 @@ void classa_enter()
 	
 	pthread_mutex_lock(&ClassNoStudent);
 
+	BGreaterThanZero = 0;
+
 	while(classb_inoffice > 0 && classa_inoffice == 0)
 	{
 		pthread_cond_wait(&ClassBMtx, &ClassNoStudent);
@@ -298,7 +300,9 @@ void classb_enter()
 	*/
 	
 	pthread_mutex_lock(&ClassNoStudent);
-
+	
+	AGreaterThanZero = 0;
+	
 	while(classa_inoffice > 0 && classb_inoffice == 0)
 	{
 		pthread_cond_wait(&ClassAMtx, &ClassNoStudent);
@@ -351,9 +355,6 @@ static void classa_leave()
 	int SemBVal;
 	sem_getvalue(&StallB, &SemBVal);
 	
-	if(SemBVal == MAX_STUDENTS_CHANGE)
-		BGreaterThanZero = 0;
-	
 	// This if statment is dependent on the other class, Class B being present
 	// If there are at least 1 student from Class B, when Class A completely leaves
 	// there is room for Class B, so let Class B enter
@@ -374,7 +375,7 @@ static void classa_leave()
 	else if(SemBVal == MAX_STUDENTS_CHANGE && BGreaterThanZero == 0)
 	{
 		int counter = 0;
-		while(counter < MAX_STUDENTS_CHANGE)
+		while(counter < MAX_STUDENTS_CHANGE && counter < total_classa)
 		{
 			sem_post(&StallA);
 			counter++;
@@ -410,9 +411,6 @@ static void classb_leave()
 	int SemAVal;
 	sem_getvalue(&StallA, &SemAVal);
 	
-	if(SemAVal == MAX_STUDENTS_CHANGE)
-		AGreaterThanZero = 0;
-	
 	// This if statment is dependent on the other class, Class A being present
 	// If there are at least 1 student from Class A, when Class B completely leaves
 	// there is room for Class A, so let Class A enter
@@ -433,7 +431,7 @@ static void classb_leave()
 	else if(SemAVal == MAX_STUDENTS_CHANGE && AGreaterThanZero == 0)
 	{
 		int counter = 0;
-		while(counter < MAX_STUDENTS_CHANGE)
+		while(counter < MAX_STUDENTS_CHANGE && counter < total_classb)
 		{
 			sem_post(&StallB);
 			counter++;
