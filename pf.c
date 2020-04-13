@@ -23,6 +23,23 @@ void CheckCmdArgs(int argc)
 	}
 }
 
+// Find the given value inside of the array
+bool find_val(const int res[], const int len, const int val_to_find, int *idx_found)
+{
+	int i = 0;
+	for(i = 0; i < len; i++)
+	{
+		if(res[i] == val_to_find)
+		{
+			*idx_found = i;
+			return true;
+		}
+	}
+	
+	*idx_found = -1;
+	return false;
+}
+
 // First in first out page replacement algorithm
 // Param1: Size of the working set
 // Param2: All the page requests
@@ -43,13 +60,14 @@ int FIFO_PF(int working_set_size, char page_requests[])
 	char *token = strtok(page_requests, " ");
 	
 	page_req_idx = 0;
+	int idx = 0;
 	
 	while(token != NULL)
 	{
 		int page = atoi(token);
 		
 		// Put the requested pages into the working set
-		if(working_set[page_req_idx] == -1 && page_req_idx < working_set_size)
+		if(!find_val(working_set, working_set_size, page, &idx) && working_set[page_req_idx] == -1 && page_req_idx < working_set_size)
 		{
 			working_set[page_req_idx] = page;
 			page_faults++;
@@ -118,23 +136,6 @@ void print(int res[], const int len)
 		printf("%d ", res[i]);
 	
 	printf("\n");
-}
-
-// Find the given value inside of the array
-bool find_val(const int res[], const int len, const int val_to_find, int *idx_found)
-{
-	int i = 0;
-	for(i = 0; i < len; i++)
-	{
-		if(res[i] == val_to_find)
-		{
-			*idx_found = i;
-			return true;
-		}
-	}
-	
-	*idx_found = -1;
-	return false;
 }
 
 bool empty(const int working_set[], const int len)
