@@ -198,10 +198,9 @@ void ChDir(FILE * FAT32Ptr, struct DirectoryEntry DirEntry[], const uint16_t Clu
 }
 
 // Lists the current directory
-void List(struct DirectoryEntry DirEntry[])
+void List(const struct DirectoryEntry DirEntry[])
 {
 	int EntryIdx = 0;
-	printf("\n");
 	for(EntryIdx = 0; EntryIdx < MAX_NUM_OF_FILES; EntryIdx++)
 	{
 		// If the file is deleted, move on to the next file
@@ -225,8 +224,8 @@ void List(struct DirectoryEntry DirEntry[])
 		   )
 		{
 			char TempFileName[12];
+			memset(&TempFileName, 0, sizeof(TempFileName));
 			strncpy(TempFileName, DirEntry[EntryIdx].DIR_Name, 11);
-			TempFileName[12] = 0;
 			
 			// If the first character is 0x05, repalce it with 0xe5
 			// This is because a filename may contain 0xe5 as the first char
@@ -239,7 +238,6 @@ void List(struct DirectoryEntry DirEntry[])
 			printf("%s\n", TempFileName);
 		}
 	}
-	printf("\n");
 }
 
 // Tokenizes the path and returns the number of directories
@@ -254,8 +252,7 @@ int TokenizePath(const char Path[], char *DirNames[])
 	int i = 0;
 	for(i = 0; token != NULL; i++)
 	{
-		DirNames[i] = (char *)malloc(sizeof(token));
-		strncpy(DirNames[i], token, strlen(token));
+		DirNames[i] = strndup(token, strlen(token));
 		token = strtok(NULL, "/");
 	}
 	
@@ -265,7 +262,7 @@ int TokenizePath(const char Path[], char *DirNames[])
 void FreePaths(char *DirNames[], int NumberOfDirectories)
 {
 	int i = 0;
-	for(i = 0; i < NumberOfDirectories; i++)
+	for(i = 0; DirNames[i] != NULL && i < NumberOfDirectories; i++)
 	{
 		free(DirNames[i]);
 	}
@@ -281,10 +278,6 @@ int main()
 	memset(&DirEntry, 0, sizeof(DirEntry));
 	// Stores the byte where the root directory starts
 	uint32_t RtDirOffset = 0;
-	
-	// Stores tokenized file path
-	char *DirNames[MAX_NUM_OF_FILES];
-	memset(&DirNames, 0, sizeof(DirNames));
 	
 	while( 1 )
 	{
@@ -321,10 +314,14 @@ int main()
 			token[token_count] = strndup( arg_ptr, MAX_COMMAND_SIZE );
 			if( strlen( token[token_count] ) == 0 )
 			{
+				free(token[token_count]);
 				token[token_count] = NULL;
 			}
 			token_count++;
 		}
+		
+		free(working_str);
+		free(working_root);
 		
 		if(token[0] == NULL)
 			continue;
@@ -430,6 +427,9 @@ int main()
 			}
 			else if(token[1] != NULL && strcmp(token[0], "cd") == 0)
 			{
+				// Stores tokenized file path
+				char *DirNames[MAX_NUM_OF_FILES];
+				memset(&DirNames, 0, sizeof(DirNames));
 				// TOKENIZE path
 				int DirectoriesToTraverse = TokenizePath(token[1], DirNames);
 				
@@ -511,7 +511,8 @@ int main()
 		}
 		
 		FreePaths(token, token_count);
-		free(working_root);
 	}
+	
+	free(cmd_str);
 	return 0;
 }
