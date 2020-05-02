@@ -30,6 +30,8 @@
 #include <string.h>
 #include <signal.h>
 #include <stdint.h>
+#include <stdbool.h>
+#include <ctype.h>
 
 #define WHITESPACE " \t\n"      // We want to split our command line up into tokens
                                 // so we need to define what delimits our tokens.
@@ -115,14 +117,16 @@ int LBAToOffset(const int32_t sector, const struct ReservedSection RsvdSec)
 	return ((sector - 2) * RsvdSec.BPB_BytesPerSec) + (RsvdSec.BPB_NumFATs * RsvdSec.BPB_FATSz32 * RsvdSec.BPB_BytesPerSec) +
 			(RsvdSec.BPB_RsvdSecCnt * RsvdSec.BPB_BytesPerSec);
 }
-/*
-bool CompareFilename(char IMG_Name, char input[])
+
+// Comapares a user friendly filename like bar.txt with BAR     TXT
+bool CompareFilename(const char IMG_Name[], const char input[])
 {
 	char expanded_name[12];
 	memset( expanded_name, ' ', 12 );
 
-	char TempInput[sizeof(input)];
-	strcpy(TempInput, input);
+	char TempInput[12];
+	strncpy(TempInput, input, strlen(input));
+	
 	char *token = strtok( TempInput, "." );
 
 	strncpy( expanded_name, token, strlen( token ) );
@@ -141,7 +145,7 @@ bool CompareFilename(char IMG_Name, char input[])
 	{
 		expanded_name[i] = toupper( expanded_name[i] );
 	}
-
+	
 	if( strncmp( expanded_name, IMG_Name, 11 ) == 0 )
 	{
 		return true;
@@ -149,14 +153,17 @@ bool CompareFilename(char IMG_Name, char input[])
 	
 	return false;
 }
-*/
+
 // Checks to see if the filename/directory exists or not
 int empty(const struct DirectoryEntry DirEntry[], const char Name[])
 {
 	int EntryIdx = 0;
 	for(EntryIdx = 0; EntryIdx < MAX_NUM_OF_FILES; EntryIdx++)
 	{
-		if(strcmp(DirEntry[EntryIdx].DIR_Name, Name) == 0)
+		if((DirEntry[EntryIdx].DIR_Attr == 0x01 ||
+		   DirEntry[EntryIdx].DIR_Attr == 0x10 ||
+		   DirEntry[EntryIdx].DIR_Attr == 0x20) &&
+		   CompareFilename(DirEntry[EntryIdx].DIR_Name, Name))
 			return EntryIdx;
 	}
 	return -1;
@@ -176,7 +183,6 @@ int main()
 	// This stores the offset that we have to make to go to a sub directory
 	// This will also be used to cd back a directory
 	uint32_t Offset = 0;
-	uint16_t PrevClus = 0;
 	
 	while( 1 )
 	{
@@ -276,12 +282,17 @@ int main()
 			}
 			else if(strcmp(token[0], "stat") == 0)
 			{
+				if(token[1] == NULL)
+				{
+					printf("Specify a file/dir name to know its stats.\n");
+					continue;
+				}
 				// Print out info about file or directory
 				int FileExists = empty(DirEntry, token[1]);
 				if(FileExists != -1)
 				{
 					printf("Attribute\t\tSize\t\tStarting Cluster Number\n");
-					printf("%d\t\t\t%d\t\t\t%d\t\t\t", DirEntry[FileExists].DIR_Attr,
+					printf("%d\t\t\t%d\t\t%d\n", DirEntry[FileExists].DIR_Attr,
 													   DirEntry[FileExists].DIR_FileSize,
 													   DirEntry[FileExists].DIR_FstCluLO);
 				}
@@ -303,10 +314,11 @@ int main()
 					// Read only - 0x01
 					// A sub directory - 0x10
 					// Archived - 0x20
-					if(DirEntry[EntryIdx].DIR_Attr == 0x01 ||
-					   DirEntry[EntryIdx].DIR_Attr == 0x10 ||
-					   DirEntry[EntryIdx].DIR_Attr == 0x20 ||
-					   DirEntry[EntryIdx].DIR_Name[0] == 0x2e)
+					if((DirEntry[EntryIdx].DIR_Attr == 0x01 ||
+					    DirEntry[EntryIdx].DIR_Attr == 0x10 ||
+					    DirEntry[EntryIdx].DIR_Attr == 0x20 ||
+					    DirEntry[EntryIdx].DIR_Name[0] == 0x2e) &&
+						DirEntry[EntryIdx].DIR_Name[0] != 0xe5)
 					{
 						char TempFileName[12];
 						strncpy(TempFileName, DirEntry[EntryIdx].DIR_Name, 11);
@@ -327,7 +339,7 @@ int main()
 			}
 			else if(token[1] != NULL && strcmp(token[0], "cd") == 0)
 			{
-				if(strcmp(token[1], ".") == 0)
+				if(strcmp(token[1], ".") == 0 || strcmp(token[1], "./") == 0)
 				{
 					continue;
 				}
@@ -400,7 +412,7 @@ int main()
 		}
 		else
 		{
-			printf("Error: File system not open.\n");
+			printf("Error: File system image must be opened first.\n");
 		}
 		
 		free( working_root );
