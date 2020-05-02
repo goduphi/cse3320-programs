@@ -132,8 +132,15 @@ bool CompareFilename(const char IMG_Name[], const char input[])
 	strcpy(TempInput, input);
 	
 	char *token = strtok( TempInput, "." );
-
-	strncpy( expanded_name, token, strlen( token ) );
+	
+	if(token == NULL)
+	{
+		strncpy(expanded_name, "..", strlen(".."));
+	}
+	else
+	{
+		strncpy( expanded_name, token, strlen( token ) );
+	}
 
 	token = strtok( NULL, "." );
 
@@ -167,12 +174,72 @@ int empty(const struct DirectoryEntry DirEntry[], const char Name[])
 	for(EntryIdx = 0; EntryIdx < MAX_NUM_OF_FILES; EntryIdx++)
 	{
 		if((DirEntry[EntryIdx].DIR_Attr == 0x01 ||
-		   DirEntry[EntryIdx].DIR_Attr == 0x10 ||
-		   DirEntry[EntryIdx].DIR_Attr == 0x20) &&
-		   CompareFilename(DirEntry[EntryIdx].DIR_Name, Name))
+		    DirEntry[EntryIdx].DIR_Attr == 0x10 ||
+		    DirEntry[EntryIdx].DIR_Attr == 0x20) &&
+		    CompareFilename(DirEntry[EntryIdx].DIR_Name, Name))
 			return EntryIdx;
 	}
 	return -1;
+}
+
+// Changes directories
+void ChDir(FILE * FAT32Ptr, struct DirectoryEntry DirEntry[], const uint16_t Cluster,
+			const uint32_t Root, const struct ReservedSection RsvdSec)
+{
+	int Offset = 0;
+	// Cluster Low of 0x0000 represents that parent directory is the root directory
+	if(Cluster == 0x0000)
+		Offset = Root;
+	else
+		Offset = LBAToOffset(Cluster, RsvdSec);
+
+	fseek(FAT32Ptr, Offset, SEEK_SET);
+	fread(DirEntry, 32 * MAX_NUM_OF_FILES, 1, FAT32Ptr);
+}
+
+// Lists the current directory
+void List(struct DirectoryEntry DirEntry[])
+{
+	int EntryIdx = 0;
+	printf("\n");
+	for(EntryIdx = 0; EntryIdx < MAX_NUM_OF_FILES; EntryIdx++)
+	{
+		// If the file is deleted, move on to the next file
+		// Well, the comparison is a hack because I forgot to declare
+		// the DIR_Name as unsigned char
+		if(DirEntry[EntryIdx].DIR_Name[0] == (signed char)0xe5)
+		{
+			continue;
+		}
+		// All of these hex values are defined in the FAT32 spec
+		// Print only if:
+		// Not deleted - 0xe5
+		// Not NULL - 0x00
+		// Read only - 0x01
+		// A sub directory - 0x10
+		// Archived - 0x20
+		if(DirEntry[EntryIdx].DIR_Attr == 0x01 ||
+		   DirEntry[EntryIdx].DIR_Attr == 0x10 ||
+		   DirEntry[EntryIdx].DIR_Attr == 0x20 ||
+		   DirEntry[EntryIdx].DIR_Name[0] == 0x2e
+		   )
+		{
+			char TempFileName[12];
+			strncpy(TempFileName, DirEntry[EntryIdx].DIR_Name, 11);
+			TempFileName[12] = 0;
+			
+			// If the first character is 0x05, repalce it with 0xe5
+			// This is because a filename may contain 0xe5 as the first char
+			// But 0xe5 also means a deleted file
+			// So, a filename that starts with 0xe5, is replaced with 0x05
+			// Which has to be replaced back
+			if(DirEntry[EntryIdx].DIR_Name[0] == 0x05)
+				TempFileName[0] = (signed char)0xe5;
+			
+			printf("%s\n", TempFileName);
+		}
+	}
+	printf("\n");
 }
 
 // Tokenizes the path and returns the number of directories
@@ -215,9 +282,9 @@ int main()
 	// Stores the byte where the root directory starts
 	uint32_t RtDirOffset = 0;
 	
-	// This stores the offset that we have to make to go to a sub directory
-	// This will also be used to cd back a directory
-	uint32_t Offset = 0;
+	// Stores tokenized file path
+	char *DirNames[MAX_NUM_OF_FILES];
+	memset(&DirNames, 0, sizeof(DirNames));
 	
 	while( 1 )
 	{
@@ -271,7 +338,8 @@ int main()
 				
 				if(FAT32Ptr == NULL)
 				{
-					perror("Error: File system image not found.");
+					// perror("Error: File system image not found.");
+					printf("Error: File system image not found.");
 					continue;
 				}
 				// Read the reserved section
@@ -279,7 +347,6 @@ int main()
 				
 				// Get the position at which the root directory is
 				RtDirOffset = RootDirOffset(RsvdSec);
-				Offset = RtDirOffset;
 				// Load in the root directory
 				fseek(FAT32Ptr, RtDirOffset, SEEK_SET);
 				fread(&DirEntry, 32 * MAX_NUM_OF_FILES, 1, FAT32Ptr);
@@ -338,71 +405,52 @@ int main()
 			}
 			else if(strcmp(token[0], "ls") == 0)
 			{	
-				int EntryIdx = 0;
-				printf("\n");
-				for(EntryIdx = 0; EntryIdx < MAX_NUM_OF_FILES; EntryIdx++)
+				int Exists = -1;
+				
+				if(token[1] != NULL && strcmp(token[1], "..") == 0)
 				{
-					// If the file is deleted, move on to the next file
-					// Well, the comparison is a hack because I forgot to declare
-					// the DIR_Name as unsigned char
-					if(DirEntry[EntryIdx].DIR_Name[0] == (signed char)0xe5)
-					{
-						continue;
-					}
-					// All of these hex values are defined in the FAT32 spec
-					// Print only if:
-					// Not deleted - 0xe5
-					// Not NULL - 0x00
-					// Read only - 0x01
-					// A sub directory - 0x10
-					// Archived - 0x20
-					if(DirEntry[EntryIdx].DIR_Attr == 0x01 ||
-					   DirEntry[EntryIdx].DIR_Attr == 0x10 ||
-					   DirEntry[EntryIdx].DIR_Attr == 0x20 ||
-					   DirEntry[EntryIdx].DIR_Name[0] == 0x2e
-					   )
-					{
-						char TempFileName[12];
-						strncpy(TempFileName, DirEntry[EntryIdx].DIR_Name, 11);
-						TempFileName[12] = 0;
-						
-						// If the first character is 0x05, repalce it with 0xe5
-						// This is because a filename may contain 0xe5 as the first char
-						// But 0xe5 also means a deleted file
-						// So, a filename that starts with 0xe5, is replaced with 0x05
-						// Which has to be replaced back
-						if(DirEntry[EntryIdx].DIR_Name[0] == 0x05)
-							TempFileName[0] = (signed char)0xe5;
-						
-						printf("%s\n", TempFileName);
-					}
+					// Stores a copy of the directory so that we do not change directory as we ls
+					struct DirectoryEntry TempDirEntry[MAX_NUM_OF_FILES];
+					Exists = empty(DirEntry, token[1]);
+					if(Exists == -1)
+						ChDir(FAT32Ptr, TempDirEntry, 0x0000, RtDirOffset, RsvdSec);
+					else
+						ChDir(FAT32Ptr, TempDirEntry,
+										DirEntry[Exists].DIR_FstCluLO, RtDirOffset, RsvdSec);
+					List(TempDirEntry);
 				}
-				printf("\n");
+				else if(token[1] == NULL)
+				{
+					List(DirEntry);
+				}
+				else
+				{
+					printf("Invalid flag. Only supports ..\n");
+				}
 			}
 			else if(token[1] != NULL && strcmp(token[0], "cd") == 0)
 			{
 				// TOKENIZE path
-				char *DirNames[MAX_NUM_OF_FILES];
-				memset(&DirNames, 0, sizeof(DirNames));
-				
 				int DirectoriesToTraverse = TokenizePath(token[1], DirNames);
 				
 				int DirCount = 0;
 				for(DirCount = 0; DirCount < DirectoriesToTraverse; DirCount++)
 				{
-					if(strncmp(DirNames[DirCount], ".", strlen(DirNames[DirCount])) == 0 ||
-					   strncmp(DirNames[DirCount], "./", strlen(DirNames[DirCount])) == 0)
+					int DirNameLen = strlen(DirNames[DirCount]);
+					if(strncmp(DirNames[DirCount], ".", DirNameLen) == 0 ||
+					   strncmp(DirNames[DirCount], "./", DirNameLen) == 0)
 					{
 						continue;
 					}
 					// Go to the root directory
-					else if(strncmp(DirNames[DirCount], "~", strlen(DirNames[DirCount])) == 0)
+					else if(strncmp(DirNames[DirCount], "~", DirNameLen) == 0)
 					{
-						fseek(FAT32Ptr, RtDirOffset, SEEK_SET);
-						fread(&DirEntry, 32 * MAX_NUM_OF_FILES, 1, FAT32Ptr);
+						// Cluster Low of 0x0000 represents that parent directory is the root directory
+						ChDir(FAT32Ptr, DirEntry,
+										0x0000, RtDirOffset, RsvdSec);
 					}
 					// Going back a directory
-					else if(strncmp(DirNames[DirCount], "..", strlen(DirNames[DirCount])) == 0)
+					else if(strncmp(DirNames[DirCount], "..", DirNameLen) == 0)
 					{
 						int EntryIdx = 0;
 						for(EntryIdx = 0; EntryIdx < MAX_NUM_OF_FILES; EntryIdx++)
@@ -410,20 +458,11 @@ int main()
 							// An entry is with the first byte of the name being 0x2e is a directory
 							// An entry with the second byte also being 0x2e means the cluster field contains
 							// cluster number of the parent
-							if(DirEntry[EntryIdx].DIR_Name[0] == 0x2e && DirEntry[EntryIdx].DIR_Name[1] == 0x2e)
+							if(DirEntry[EntryIdx].DIR_Name[0] == 0x2e &&
+							   DirEntry[EntryIdx].DIR_Name[1] == 0x2e)
 							{
-								// Cluster number of 0x0000 means the root directory
-								if(DirEntry[EntryIdx].DIR_FstCluLO == 0x0000)
-								{
-									fseek(FAT32Ptr, RtDirOffset, SEEK_SET);
-									fread(&DirEntry, 32 * MAX_NUM_OF_FILES, 1, FAT32Ptr);
-								}
-								else
-								{
-									Offset = LBAToOffset(DirEntry[EntryIdx].DIR_FstCluLO, RsvdSec);
-									fseek(FAT32Ptr, Offset, SEEK_SET);
-									fread(&DirEntry, 32 * MAX_NUM_OF_FILES, 1, FAT32Ptr);
-								}
+								ChDir(FAT32Ptr, DirEntry,
+										DirEntry[EntryIdx].DIR_FstCluLO, RtDirOffset, RsvdSec);
 								break;
 							}
 						}
@@ -433,18 +472,15 @@ int main()
 						int EntryIdx = 0;
 						for(EntryIdx = 0; EntryIdx < MAX_NUM_OF_FILES; EntryIdx++)
 						{
-							char TempDirName[11];
-							memset(&TempDirName, ' ', sizeof(TempDirName));
-							strncpy(TempDirName, DirNames[DirCount], strlen(DirNames[DirCount]));
 							// First check if the file exists or not
-							if(memcmp(TempDirName, DirEntry[EntryIdx].DIR_Name, sizeof(DirEntry[EntryIdx].DIR_Name)) == 0)
+							// if(memcmp(TempDirName, DirEntry[EntryIdx].DIR_Name, sizeof(DirEntry[EntryIdx].DIR_Name)) == 0)
+							if(CompareFilename(DirEntry[EntryIdx].DIR_Name, DirNames[DirCount]))
 							{
 								// Check to see if the file is a directory by checking the attribute against 0x10
 								if(DirEntry[EntryIdx].DIR_Attr == 0x10)
 								{
-									Offset = LBAToOffset(DirEntry[EntryIdx].DIR_FstCluLO, RsvdSec);
-									fseek(FAT32Ptr, Offset, SEEK_SET);
-									fread(&DirEntry, 32 * MAX_NUM_OF_FILES, 1, FAT32Ptr);
+									ChDir(FAT32Ptr, DirEntry,
+										DirEntry[EntryIdx].DIR_FstCluLO, RtDirOffset, RsvdSec);
 								}
 								else
 								{
@@ -475,8 +511,7 @@ int main()
 		}
 		
 		FreePaths(token, token_count);
-		free( working_root );
-
+		free(working_root);
 	}
 	return 0;
 }
