@@ -118,6 +118,15 @@ int LBAToOffset(const int32_t sector, const struct ReservedSection RsvdSec)
 			(RsvdSec.BPB_RsvdSecCnt * RsvdSec.BPB_BytesPerSec);
 }
 
+int16_t NextLB(FILE * FAT32Ptr, uint32_t sector, struct ReservedSection RsvdSec)
+{
+	uint32_t FATAddress = (RsvdSec.BPB_BytesPerSec * RsvdSec.BPB_RsvdSecCnt) + (sector * 4);
+	int16_t val;
+	fseek(FAT32Ptr, FATAddress, SEEK_SET);
+	fread(&val, 2, 1, FAT32Ptr);
+	return val;
+}
+
 // Comapares a user friendly filename like bar.txt with BAR     TXT
 // Param 1: Pass in DIR_Name member of the DirEntry struct
 // Param 2: User inputter filename
@@ -285,14 +294,72 @@ void ReadFile(FILE * FAT32Ptr, const struct DirectoryEntry DirEntry[],
 			printf("Error: Not a file.\n");
 		else
 		{
+			if((Pos < 0 || Pos > DirEntry[Exists].DIR_FileSize) ||
+				(Bytes < 0 || Bytes > DirEntry[Exists].DIR_FileSize))
+			{
+				printf("Cannot read given range.\n");
+				return;
+			}
+			
 			char buffer[DirEntry[Exists].DIR_FileSize];
 			memset(&buffer, 0, sizeof(buffer));
-			fseek(FAT32Ptr, Pos + LBAToOffset(DirEntry[Exists].DIR_FstCluLO, RsvdSec), SEEK_SET);
-			fread(&buffer, 1, Bytes, FAT32Ptr);
+			int16_t sector = DirEntry[Exists].DIR_FstCluLO;
+			int TempPos = Pos;
+			
+			// First we need to find which cluster the position is in
+			// If the pos 512 or greater, look into the next logical block
+			while(TempPos >= RsvdSec.BPB_BytesPerSec * RsvdSec.BPB_SecPerClus)
+			{
+				sector = NextLB(FAT32Ptr, sector, RsvdSec);
+				TempPos -= RsvdSec.BPB_BytesPerSec * RsvdSec.BPB_SecPerClus;
+			}
+			
+			// Whatever value is left for the Pos, is relative to the cluster
+			int Offset = TempPos + LBAToOffset(sector, RsvdSec);
+			
+			if(Bytes + Pos > DirEntry[Exists].DIR_FileSize)
+			{
+				printf("Cannot read bytes more than the file size.\n");
+				return;
+			}
+			
+			int BytesToRead = Bytes;
+			int BytesToReadTemp = BytesToRead;
+			int ByteIdx = 0;
+			
+			while(sector != -1)
+			{
+				// If the bytes to read are more than the cluster size, read a cluster first
+				if(BytesToRead > RsvdSec.BPB_BytesPerSec * RsvdSec.BPB_SecPerClus)
+				{
+					BytesToReadTemp = RsvdSec.BPB_BytesPerSec * RsvdSec.BPB_SecPerClus - TempPos;
+				}
+				
+				fseek(FAT32Ptr, Offset, SEEK_SET);
+				fread(&buffer[ByteIdx], 1, BytesToReadTemp, FAT32Ptr);
+				
+				// Move the pointer so that we move to a new contiguous block to store
+				// the next piece of data
+				ByteIdx += BytesToReadTemp;
+				
+				// Subtract the bytes read
+				BytesToRead -= BytesToReadTemp;
+				BytesToReadTemp = BytesToRead;
+				
+				// If there are still bytes to read, locate the next logical block
+				if(BytesToReadTemp > 0)
+				{
+					sector = NextLB(FAT32Ptr, sector, RsvdSec);
+					Offset = LBAToOffset(sector, RsvdSec);
+					TempPos = 0;
+				}
+				else
+					break;
+			}
 			
 			int i = 0;
-			for(i = 0; buffer[i] != 0; i++)
-				printf("%x ", buffer[i]);
+			for(i = 0; i < Bytes; i++)
+					printf("%x ", buffer[i]);
 			
 			printf("\n");
 		}
