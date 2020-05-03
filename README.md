@@ -8,7 +8,7 @@
   Supports FAT32 file systems  
   Compile using: gcc -Wall mfs.c -o mfs -g  
   Usage:  
-  `open <file image name>` 
+  `open <file image name>`  
   `close`  
   `info`  
   `stat`  
