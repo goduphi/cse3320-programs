@@ -118,7 +118,8 @@ int RootDirOffset(const struct ReservedSection RsvdSec)
 
 int LBAToOffset(const int32_t sector, const struct ReservedSection RsvdSec)
 {
-	return ((sector - 2) * RsvdSec.BPB_BytesPerSec) + (RsvdSec.BPB_NumFATs * RsvdSec.BPB_FATSz32 * RsvdSec.BPB_BytesPerSec) +
+	return ((sector - 2) * RsvdSec.BPB_BytesPerSec) +
+			(RsvdSec.BPB_NumFATs * RsvdSec.BPB_FATSz32 * RsvdSec.BPB_BytesPerSec) +
 			(RsvdSec.BPB_RsvdSecCnt * RsvdSec.BPB_BytesPerSec);
 }
 
@@ -179,6 +180,7 @@ bool CompareFilename(const char IMG_Name[], const char input[])
 }
 
 // Checks to see if the filename/directory exists or not
+// If true, returns its index
 // Param 1: Pass in array of DirectoryEntry structs that is already populated
 // Param 2: User inputted name
 int empty(const struct DirectoryEntry DirEntry[], const char Name[])
@@ -188,7 +190,9 @@ int empty(const struct DirectoryEntry DirEntry[], const char Name[])
 	{
 		if((DirEntry[EntryIdx].DIR_Attr == 0x01 ||
 		    DirEntry[EntryIdx].DIR_Attr == 0x10 ||
-		    DirEntry[EntryIdx].DIR_Attr == 0x20) &&
+		    DirEntry[EntryIdx].DIR_Attr == 0x20 ||
+			DirEntry[EntryIdx].DIR_Name[0] == 0x2e) &&
+			(DirEntry[EntryIdx].DIR_Name[0] != (signed char)0xe5) &&
 		    CompareFilename(DirEntry[EntryIdx].DIR_Name, Name))
 			return EntryIdx;
 	}
@@ -328,7 +332,6 @@ char * ReadFile(FILE * FAT32Ptr, const struct DirectoryEntry DirEntry[],
 				return NULL;
 			}
 			
-			
 			int16_t sector = DirEntry[Exists].DIR_FstCluLO;
 			int TempPos = Pos;
 			
@@ -406,8 +409,10 @@ char * ReadFile(FILE * FAT32Ptr, const struct DirectoryEntry DirEntry[],
 				printf("\n");
 			}
 			
+			/* Debugging
 			if(TotalSizeRead != DirEntry[Exists].DIR_FileSize)
 				printf("Error while reading file.\n");
+			*/
 			
 			return buffer;
 		}
@@ -494,7 +499,7 @@ int main()
 				if(FAT32Ptr == NULL)
 				{
 					// perror("Error: File system image not found.");
-					printf("Error: File system image not found.");
+					printf("Error: File system image not found.\n");
 					continue;
 				}
 				// Read the reserved section
@@ -579,7 +584,8 @@ int main()
 				// Read bytes of the file
 				// rf just means Read File
 				size_t size;
-				char * rf = ReadFile(FAT32Ptr, DirEntry, RsvdSec, token[1], Pos, NoOfBytes, 0, &size);
+				char * rf = ReadFile(FAT32Ptr, DirEntry, RsvdSec, token[1], Pos, NoOfBytes,
+																					0, &size);
 				free(rf);
 			}
 			else if(strcmp(token[0], "get") == 0)
@@ -625,17 +631,26 @@ int main()
 										DirEntry[Exists].DIR_FstCluLO, RtDirOffset, RsvdSec);
 					List(TempDirEntry);
 				}
+				else if(token[1] != NULL && strcmp(token[1], ".") == 0)
+				{
+					continue;
+				}
 				else if(token[1] == NULL)
 				{
 					List(DirEntry);
 				}
 				else
 				{
-					printf("Invalid flag. Only supports ..\n");
+					printf("Invalid flag. Only supports . & ..\n");
 				}
 			}
-			else if(token[1] != NULL && strcmp(token[0], "cd") == 0)
+			else if(strcmp(token[0], "cd") == 0)
 			{
+				if(token[1] == NULL)
+				{
+					printf("Specify destination.\n");
+					continue;
+				}
 				// Stores tokenized file path
 				char *DirNames[MAX_NUM_OF_FILES];
 				memset(&DirNames, 0, sizeof(DirNames));
@@ -654,7 +669,8 @@ int main()
 					// Go to the root directory
 					else if(strncmp(DirNames[DirCount], "~", DirNameLen) == 0)
 					{
-						// Cluster Low of 0x0000 represents that parent directory is the root directory
+						// Cluster Low of 0x0000 represents that parent directory is
+						// the root directory
 						ChDir(FAT32Ptr, DirEntry,
 										0x0000, RtDirOffset, RsvdSec);
 					}
@@ -664,8 +680,10 @@ int main()
 						int EntryIdx = 0;
 						for(EntryIdx = 0; EntryIdx < MAX_NUM_OF_FILES; EntryIdx++)
 						{
-							// An entry is with the first byte of the name being 0x2e is a directory
-							// An entry with the second byte also being 0x2e means the cluster field contains
+							// An entry is with the first byte of the name being 0x2e
+							// is a directory
+							// An entry with the second byte also being 0x2e means
+							// the cluster field contains
 							// cluster number of the parent
 							if(DirEntry[EntryIdx].DIR_Name[0] == 0x2e &&
 							   DirEntry[EntryIdx].DIR_Name[1] == 0x2e)
@@ -682,7 +700,6 @@ int main()
 						for(EntryIdx = 0; EntryIdx < MAX_NUM_OF_FILES; EntryIdx++)
 						{
 							// First check if the file exists or not
-							// if(memcmp(TempDirName, DirEntry[EntryIdx].DIR_Name, sizeof(DirEntry[EntryIdx].DIR_Name)) == 0)
 							if(CompareFilename(DirEntry[EntryIdx].DIR_Name, DirNames[DirCount]))
 							{
 								// Check to see if the file is a directory by checking the attribute against 0x10
@@ -701,6 +718,14 @@ int main()
 						
 						if(EntryIdx == MAX_NUM_OF_FILES)
 						{
+							// If for some reason, the inital entry exists, but the next one doesn't,
+							// stay in the current directory
+							if(DirCount > 0)
+							{
+								int ParentIdx = empty(DirEntry, ".");
+								ChDir(FAT32Ptr, DirEntry,
+										DirEntry[ParentIdx].DIR_FstCluLO, RtDirOffset, RsvdSec);
+							}
 							printf("The file/directory does not exist.\n");
 							break;
 						}
