@@ -1,3 +1,7 @@
+/*
+	Author: Sarker Nadir Afridi Azmi
+*/
+
 // The MIT License (MIT)
 // 
 // Copyright (c) 2016, 2017 Trevor Bakker 
@@ -176,7 +180,7 @@ bool CompareFilename(const char IMG_Name[], const char input[])
 
 // Checks to see if the filename/directory exists or not
 // Param 1: Pass in array of DirectoryEntry structs that is already populated
-// Param 2: User inputter name
+// Param 2: User inputted name
 int empty(const struct DirectoryEntry DirEntry[], const char Name[])
 {
 	int EntryIdx = 0;
@@ -192,6 +196,11 @@ int empty(const struct DirectoryEntry DirEntry[], const char Name[])
 }
 
 // Changes directories
+// Param 1: Pointer to the file image
+// Param 2: Array of Directory Entries - used to look up the file name
+// Param 3: The Lower Cluster number of the file
+// Param 4: Root cluster number found using RootDirOffset(const struct ReservedSection RsvdSec);
+// Param 5: Reserved section info as defined by the struct above [struct ReservedSection]
 void ChDir(FILE * FAT32Ptr, struct DirectoryEntry DirEntry[], const uint16_t Cluster,
 			const uint32_t Root, const struct ReservedSection RsvdSec)
 {
@@ -207,6 +216,7 @@ void ChDir(FILE * FAT32Ptr, struct DirectoryEntry DirEntry[], const uint16_t Clu
 }
 
 // Lists the current directory
+// Param: Directory Entry for directory to list
 void List(const struct DirectoryEntry DirEntry[])
 {
 	int EntryIdx = 0;
@@ -250,6 +260,8 @@ void List(const struct DirectoryEntry DirEntry[])
 }
 
 // Tokenizes the path and returns the number of directories
+// Param 1: Pass in path to tokenize - path must include /
+// Param 2: Array of pointers to char that will hold all of the Directory names
 int TokenizePath(const char Path[], char *DirNames[])
 {
 	char WorkingPath[strlen(Path) + 1];
@@ -269,6 +281,7 @@ int TokenizePath(const char Path[], char *DirNames[])
 }
 
 // Checks to see if the input is a number or not
+// Param: Pass in a string
 bool IsInt(const char *token)
 {
 	int i = 0;
@@ -280,29 +293,42 @@ bool IsInt(const char *token)
 	return true;
 }
 
-// Reads the file and prints out its bytes
-void ReadFile(FILE * FAT32Ptr, const struct DirectoryEntry DirEntry[],
+// This function is used for both reading and writing a file
+// Param 1: Pointer to the file image
+// Param 2: Array of Directory Entries - used to look up the file name
+// Param 3: Reserved section info as defined by the struct above [struct ReservedSection]
+// Param 4: Name of the file to read
+// Param 5: Position to star reading the file
+// Param 6: Number of bytes to read
+// Param 7: 0 - Readfile, 1 - Getfile
+// Param 8: Pointer to a size variable which will hold the size of the file
+char * ReadFile(FILE * FAT32Ptr, const struct DirectoryEntry DirEntry[],
 							   const struct ReservedSection RsvdSec,
-							   const char Name[], int Pos, int Bytes)
+							   const char Name[], int Pos, int Bytes, int ReadOrGet, size_t *size)
 {
 	int Exists = empty(DirEntry, Name);
 	if(Exists == -1)
+	{
 		printf("Error: Could not find file.\n");
+		return NULL;
+	}
 	else
 	{
 		if(DirEntry[Exists].DIR_Name[0] == 0x2e || DirEntry[Exists].DIR_Attr == 0x10)
+		{
 			printf("Error: Not a file.\n");
+			return NULL;
+		}
 		else
 		{
 			if((Pos < 0 || Pos > DirEntry[Exists].DIR_FileSize) ||
 				(Bytes < 0 || Bytes > DirEntry[Exists].DIR_FileSize))
 			{
 				printf("Cannot read given range.\n");
-				return;
+				return NULL;
 			}
 			
-			char buffer[DirEntry[Exists].DIR_FileSize];
-			memset(&buffer, 0, sizeof(buffer));
+			
 			int16_t sector = DirEntry[Exists].DIR_FstCluLO;
 			int TempPos = Pos;
 			
@@ -320,12 +346,24 @@ void ReadFile(FILE * FAT32Ptr, const struct DirectoryEntry DirEntry[],
 			if(Bytes + Pos > DirEntry[Exists].DIR_FileSize)
 			{
 				printf("Cannot read bytes more than the file size.\n");
-				return;
+				return NULL;
 			}
 			
+			char * buffer = (char *)malloc(DirEntry[Exists].DIR_FileSize);
+			memset(buffer, 0, DirEntry[Exists].DIR_FileSize);
+			
 			int BytesToRead = Bytes;
+			*size = DirEntry[Exists].DIR_FileSize;
+			
+			// If we are using get, read the entire file
+			if(ReadOrGet == 1)
+			{
+				BytesToRead = DirEntry[Exists].DIR_FileSize;
+			}
+			
 			int BytesToReadTemp = BytesToRead;
 			int ByteIdx = 0;
+			size_t TotalSizeRead = 0;
 			
 			while(sector != -1)
 			{
@@ -336,8 +374,9 @@ void ReadFile(FILE * FAT32Ptr, const struct DirectoryEntry DirEntry[],
 				}
 				
 				fseek(FAT32Ptr, Offset, SEEK_SET);
-				fread(&buffer[ByteIdx], 1, BytesToReadTemp, FAT32Ptr);
+				size_t SizeRead = fread((buffer + ByteIdx), 1, BytesToReadTemp, FAT32Ptr);
 				
+				TotalSizeRead += SizeRead;
 				// Move the pointer so that we move to a new contiguous block to store
 				// the next piece of data
 				ByteIdx += BytesToReadTemp;
@@ -357,15 +396,27 @@ void ReadFile(FILE * FAT32Ptr, const struct DirectoryEntry DirEntry[],
 					break;
 			}
 			
-			int i = 0;
-			for(i = 0; i < Bytes; i++)
-					printf("%x ", buffer[i]);
+			// If we are not getting the file, print it
+			if(ReadOrGet == 0)
+			{
+				int i = 0;
+				for(i = 0; i < Bytes; i++)
+						printf("%x ", buffer[i]);
+				
+				printf("\n");
+			}
 			
-			printf("\n");
+			if(TotalSizeRead != DirEntry[Exists].DIR_FileSize)
+				printf("Error while reading file.\n");
+			
+			return buffer;
 		}
 	}
 }
 
+// Frees memory allocated with malloc
+// Param 1: Array of pointers to char
+// Param 2: Length of the array
 void FreePaths(char *DirNames[], int NumberOfDirectories)
 {
 	int i = 0;
@@ -512,7 +563,7 @@ int main()
 				// Check Args
 				if((token[1] == NULL) || (token[2] == NULL) || (token[3] == NULL))
 				{
-					printf("Format: <filename> <position> <number of bytes>\n");
+					printf("Format: read <filename> <position> <number of bytes>\n");
 					continue;
 				}
 				
@@ -526,7 +577,37 @@ int main()
 				int NoOfBytes = atoi(token[3]);
 				
 				// Read bytes of the file
-				ReadFile(FAT32Ptr, DirEntry, RsvdSec, token[1], Pos, NoOfBytes);
+				// rf just means Read File
+				size_t size;
+				char * rf = ReadFile(FAT32Ptr, DirEntry, RsvdSec, token[1], Pos, NoOfBytes, 0, &size);
+				free(rf);
+			}
+			else if(strcmp(token[0], "get") == 0)
+			{
+				// This is just paranoia error checking
+				if(token_count < 2 || token_count > 3 || token[1] == NULL)
+				{
+					printf("Format: get <filename>\n");
+					continue;
+				}
+				
+				// Read bytes of the file
+				// rf just means Read File
+				// Stores the size of the file to write
+				size_t size;
+				char * rf = ReadFile(FAT32Ptr, DirEntry, RsvdSec, token[1], 0, 0, 1, &size);
+				
+				if(rf != NULL)
+				{
+					FILE *fp = fopen(token[1], "w");
+					size_t ByteWritten = fwrite(rf, 1, size, fp);
+					
+					if(size != ByteWritten)
+						printf("There were some errors writing the file.\n");
+					
+					fclose(fp);
+				}
+				free(rf);
 			}
 			else if(strcmp(token[0], "ls") == 0)
 			{	
