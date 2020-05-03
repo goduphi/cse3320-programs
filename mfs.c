@@ -259,6 +259,46 @@ int TokenizePath(const char Path[], char *DirNames[])
 	return i;
 }
 
+// Checks to see if the input is a number or not
+bool IsInt(const char *token)
+{
+	int i = 0;
+	for(i = 0; i < strlen(token); i++)
+	{
+		if(!isdigit(token[i]))
+			return false;
+	}
+	return true;
+}
+
+// Reads the file and prints out its bytes
+void ReadFile(FILE * FAT32Ptr, const struct DirectoryEntry DirEntry[],
+							   const struct ReservedSection RsvdSec,
+							   const char Name[], int Pos, int Bytes)
+{
+	int Exists = empty(DirEntry, Name);
+	if(Exists == -1)
+		printf("Error: Could not find file.\n");
+	else
+	{
+		if(DirEntry[Exists].DIR_Name[0] == 0x2e || DirEntry[Exists].DIR_Attr == 0x10)
+			printf("Error: Not a file.\n");
+		else
+		{
+			char buffer[DirEntry[Exists].DIR_FileSize];
+			memset(&buffer, 0, sizeof(buffer));
+			fseek(FAT32Ptr, Pos + LBAToOffset(DirEntry[Exists].DIR_FstCluLO, RsvdSec), SEEK_SET);
+			fread(&buffer, 1, Bytes, FAT32Ptr);
+			
+			int i = 0;
+			for(i = 0; buffer[i] != 0; i++)
+				printf("%x ", buffer[i]);
+			
+			printf("\n");
+		}
+	}
+}
+
 void FreePaths(char *DirNames[], int NumberOfDirectories)
 {
 	int i = 0;
@@ -399,6 +439,27 @@ int main()
 				{
 					printf("Error: File not found.\n");
 				}
+			}
+			else if(strcmp(token[0], "read") == 0)
+			{
+				// Check Args
+				if((token[1] == NULL) || (token[2] == NULL) || (token[3] == NULL))
+				{
+					printf("Format: <filename> <position> <number of bytes>\n");
+					continue;
+				}
+				
+				if(!IsInt(token[2]) || !IsInt(token[3]))
+				{
+					printf("read : <position> <number of bytes> have to be integers.\n");
+					continue;
+				}
+				
+				int Pos = atoi(token[2]);
+				int NoOfBytes = atoi(token[3]);
+				
+				// Read bytes of the file
+				ReadFile(FAT32Ptr, DirEntry, RsvdSec, token[1], Pos, NoOfBytes);
 			}
 			else if(strcmp(token[0], "ls") == 0)
 			{	
