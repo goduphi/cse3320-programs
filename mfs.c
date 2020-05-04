@@ -1,5 +1,5 @@
 /*
-	Author: Sarker Nadir Afridi Azmi
+	Authors: Sarker Nadir Afridi Azmi
 */
 
 // The MIT License (MIT)
@@ -631,11 +631,7 @@ int main()
 										DirEntry[Exists].DIR_FstCluLO, RtDirOffset, RsvdSec);
 					List(TempDirEntry);
 				}
-				else if(token[1] != NULL && strcmp(token[1], ".") == 0)
-				{
-					continue;
-				}
-				else if(token[1] == NULL)
+				else if(token[1] == NULL || (token[1] != NULL && strcmp(token[1], ".") == 0))
 				{
 					List(DirEntry);
 				}
@@ -702,7 +698,8 @@ int main()
 							// First check if the file exists or not
 							if(CompareFilename(DirEntry[EntryIdx].DIR_Name, DirNames[DirCount]))
 							{
-								// Check to see if the file is a directory by checking the attribute against 0x10
+								// Check to see if the file is a directory by checking the
+								// attribute against 0x10
 								if(DirEntry[EntryIdx].DIR_Attr == 0x10)
 								{
 									ChDir(FAT32Ptr, DirEntry,
