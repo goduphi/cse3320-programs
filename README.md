@@ -1,5 +1,5 @@
 # CSE3320 - Operating Systems
-## All of the programs in this repository were homework problem from class.
+## All of the programs in this repository were homework problems from class.
 
 ### Linux Shell named Mav Shell - msh.c  
 ### Thread Synchronization - officehours.c  
